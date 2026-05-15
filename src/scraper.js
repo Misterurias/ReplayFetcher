@@ -1,4 +1,4 @@
-import { config }                                    from "./config.js";
+import { config }                                    from "../config.js";
 import { migrate, getState, saveState, beginNewCycle,
          insertBatch, closeDb }                      from "./db.js";
 import { fetchReplays }                              from "./api.js";
