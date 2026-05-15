@@ -1,0 +1,22 @@
+{
+  "name": "replayfetcher",
+  "version": "1.0.0",
+  "description": "Bonk.io replay scraper — Postgres + Railway",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "bytebuffer": "^5.0.1",
+    "lz-string": "^1.5.0",
+    "pg": "^8.20.0",
+    "pson": "^2.0.0"
+  }
+}

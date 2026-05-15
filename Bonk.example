@@ -1,0 +1,17 @@
+# ── Required ──────────────────────────────────────────────────────────────────
+# Railway injects this automatically when you add a Postgres plugin.
+# Only set manually for local dev.
+DATABASE_URL=postgresql://user:password@localhost:5432/bonk
+
+# ── Optional ──────────────────────────────────────────────────────────────────
+# The current cycle number. Only used to seed scraper_state on first run.
+# After that the DB is authoritative — changing this has no effect mid-run.
+CURRENT_CYCLE=6
+
+# The replay ID to start from within the current cycle (default: 1).
+# Set this to a known early ID if you want to backfill from a specific point.
+START_POSITION=1
+
+# How far below the current position a new batch's max ID must be to trigger
+# a cycle-reset. Default 0.01 = 1%. Rarely needs changing.
+# CYCLE_RESET_THRESHOLD=0.01
