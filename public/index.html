@@ -1,0 +1,483 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Bonkverse · Replay Decoder</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0A1A29; --bg-2:#0C2034; --panel:#0F2840; --panel-2:#0B1F33;
+    --line:rgba(125,211,252,.10); --line-strong:rgba(125,211,252,.20);
+    --ink:#E8F1F6; --muted:#7E9AB0;
+    --teal:#22D3BD; --teal-deep:#12B6A3; --cyan:#7DD3FC; --coral:#FF6B6B; --amber:#FFC15E;
+    --radius:14px;
+    --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+    --sans:"Space Grotesk",system-ui,-apple-system,Segoe UI,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    background:
+      radial-gradient(1100px 520px at 78% -8%, rgba(34,211,189,.10), transparent 60%),
+      radial-gradient(900px 480px at 6% 4%, rgba(125,211,252,.07), transparent 55%),
+      var(--bg);
+    color:var(--ink); font-family:var(--sans); line-height:1.5;
+    -webkit-font-smoothing:antialiased; min-height:100vh;
+  }
+  .wrap{max-width:1060px;margin:0 auto;padding:34px 22px 80px}
+
+  /* Header */
+  header{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;flex-wrap:wrap;margin-bottom:26px}
+  .brand{display:flex;align-items:center;gap:13px}
+  .glyph{width:42px;height:42px;border-radius:11px;flex:0 0 auto;position:relative;
+    background:linear-gradient(150deg,var(--teal),var(--teal-deep));
+    box-shadow:0 0 0 1px rgba(34,211,189,.35), 0 8px 24px -10px rgba(34,211,189,.6);}
+  .glyph::after{content:"";position:absolute;inset:0;margin:auto;width:14px;height:14px;border-radius:50%;
+    background:var(--bg);box-shadow:0 0 0 3px var(--teal) inset;}
+  h1{font-size:1.32rem;font-weight:700;margin:0;letter-spacing:-.01em}
+  h1 .dim{color:var(--muted);font-weight:500}
+  .sub{color:var(--muted);font-size:.86rem;margin-top:3px;max-width:46ch}
+  .pill{font-family:var(--mono);font-size:.7rem;letter-spacing:.02em;color:var(--cyan);
+    border:1px solid var(--line-strong);border-radius:999px;padding:6px 12px;white-space:nowrap;background:var(--panel-2);}
+  .pill b{color:var(--teal);font-weight:700}
+
+  /* Panels */
+  .panel{background:linear-gradient(180deg,var(--panel),var(--panel-2));
+    border:1px solid var(--line);border-radius:var(--radius);padding:18px;margin-bottom:18px;}
+  .eyebrow{font-family:var(--mono);font-size:.68rem;letter-spacing:.16em;text-transform:uppercase;
+    color:var(--muted);margin:0 0 11px;display:flex;align-items:center;gap:9px;}
+  .eyebrow::before{content:"";width:18px;height:2px;background:var(--teal);border-radius:2px}
+
+  /* Input */
+  textarea{width:100%;min-height:130px;resize:vertical;background:var(--bg);color:var(--ink);
+    border:1px solid var(--line-strong);border-radius:11px;font-family:var(--mono);font-size:.82rem;
+    line-height:1.55;padding:13px 14px;outline:none;word-break:break-all;}
+  textarea::placeholder{color:#4E6B81}
+  textarea:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(34,211,189,.16)}
+
+  .controls{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:13px}
+  button{font-family:var(--sans);font-weight:600;font-size:.9rem;cursor:pointer;border-radius:10px;
+    padding:10px 18px;border:1px solid transparent;transition:.16s ease;}
+  button:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+  .btn-primary{background:var(--teal);color:#04130F;border-color:var(--teal)}
+  .btn-primary:hover{background:#3ee3cf}
+  .btn-ghost{background:transparent;color:var(--ink);border-color:var(--line-strong)}
+  .btn-ghost:hover{border-color:var(--teal);color:var(--teal)}
+  .btn-small{padding:9px 13px;font-size:.82rem}
+  .btn-tiny{padding:6px 10px;font-size:.74rem;border-radius:8px}
+  button:disabled{opacity:.5;cursor:not-allowed}
+  .spacer{flex:1}
+
+  .byid{display:flex;align-items:center;gap:8px;margin-top:12px;color:var(--muted);font-size:.82rem}
+  .byid[hidden]{display:none}
+  .byid label{white-space:nowrap}
+  .byid input{width:120px;background:var(--bg);color:var(--ink);font-family:var(--mono);font-size:.82rem;
+    border:1px solid var(--line-strong);border-radius:9px;padding:9px 11px;outline:none;}
+  .byid input:focus{border-color:var(--teal)}
+
+  /* Fetched rows */
+  #fetchPanel{display:none}
+  .rows{display:grid;gap:8px}
+  .row{display:grid;grid-template-columns:auto auto 1fr auto;gap:14px;align-items:center;
+    background:var(--panel-2);border:1px solid var(--line);border-radius:10px;padding:11px 13px;
+    cursor:pointer;transition:.14s ease;text-align:left;width:100%;}
+  .row:hover{border-color:var(--teal);transform:translateX(2px)}
+  .row .rid{font-family:var(--mono);font-weight:700;color:var(--teal);font-size:.9rem}
+  .row .rmap{font-family:var(--mono);font-size:.76rem;color:var(--muted)}
+  .row .rprev{font-family:var(--mono);font-size:.72rem;color:#5C7892;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .row .rgo{font-size:.76rem;color:var(--teal);font-weight:600;opacity:0;transition:.14s}
+  .row:hover .rgo{opacity:1}
+
+  /* Result */
+  #resultPanel{display:none}
+
+  /* Replay header card */
+  .rhead{background:var(--panel-2);border:1px solid var(--line);border-radius:12px;padding:15px 16px;margin-bottom:16px}
+  .rhead .map-title{font-size:1.18rem;font-weight:700;letter-spacing:-.01em;display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+  .rhead .map-title .by{color:var(--muted);font-weight:500;font-size:.9rem}
+  .meta-chips{display:flex;gap:7px;flex-wrap:wrap;margin-top:11px}
+  .mchip{font-family:var(--mono);font-size:.72rem;color:var(--cyan);border:1px solid var(--line-strong);
+    border-radius:7px;padding:5px 9px;white-space:nowrap}
+  .mchip b{color:var(--teal);font-weight:700}
+  .mchip.mode{color:#04130F;background:var(--teal);border-color:var(--teal);font-weight:700}
+
+  /* Players */
+  .players-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+  .players-head .eyebrow{margin:0}
+  .players-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;margin-bottom:18px}
+  .pcard{background:var(--panel-2);border:1px solid var(--line);border-radius:11px;padding:12px 13px;display:flex;flex-direction:column;gap:8px}
+  .pcard-top{display:flex;align-items:center;gap:11px;min-width:0}
+  .pcard-info{min-width:0;display:flex;flex-direction:column;gap:6px;flex:1}
+  .pskin{width:60px;height:60px;flex:0 0 auto;border-radius:50%;background:var(--bg);
+    box-shadow:0 0 0 1px var(--line-strong), inset 0 0 0 1px rgba(0,0,0,.25);image-rendering:auto;}
+  .pskin-empty{width:60px;height:60px;flex:0 0 auto;border-radius:50%;border:1px dashed var(--line-strong);
+    display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:.58rem;
+    color:var(--muted);text-align:center;line-height:1.15;padding:4px;}
+  .pcard .pname{font-weight:600;display:flex;align-items:center;gap:8px;font-size:.95rem;min-width:0}
+  .pcard .pname .uname{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .pcard .swatch{width:13px;height:13px;border-radius:4px;flex:0 0 auto;border:1px solid rgba(255,255,255,.18)}
+  .pcard .pmeta{font-family:var(--mono);font-size:.7rem;color:var(--muted);display:flex;gap:9px;flex-wrap:wrap}
+  .pcard .pmeta .sc{color:var(--amber)}
+  .pcard .pmeta .lv{color:var(--cyan)}
+  .pcard .pacts{display:flex;gap:6px;margin-top:2px}
+  .pcard .pacts .grow{flex:1}
+
+  .json-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:9px}
+  .json-head .eyebrow{margin:0}
+  .mini{display:flex;gap:8px}
+  pre{margin:0;background:var(--bg);border:1px solid var(--line-strong);border-radius:11px;padding:15px;
+    overflow:auto;max-height:520px;font-family:var(--mono);font-size:.78rem;line-height:1.55;color:#CFE3EE;}
+  .j-key{color:var(--cyan)} .j-str{color:#9DE7B0} .j-num{color:var(--amber)}
+  .j-bool{color:var(--coral)} .j-null{color:var(--muted)}
+
+  /* Pipeline */
+  .pipe{display:flex;align-items:stretch;gap:0;flex-wrap:wrap}
+  .stage{flex:1 1 120px;min-width:120px;position:relative;border:1px solid var(--line);border-radius:11px;
+    padding:12px 13px;background:var(--panel-2);opacity:.4;transition:opacity .35s ease,border-color .35s ease;}
+  .stage + .stage{margin-left:26px}
+  .stage::before{content:"";position:absolute;left:-26px;top:50%;width:26px;height:2px;
+    background:linear-gradient(90deg,transparent,var(--line-strong));transform:translateY(-50%);}
+  .stage:first-child::before{display:none}
+  .stage.on{opacity:1;border-color:var(--line-strong)}
+  .stage.on::before{background:linear-gradient(90deg,var(--teal-deep),var(--teal))}
+  .stage .st-no{font-family:var(--mono);font-size:.66rem;color:var(--teal);letter-spacing:.04em}
+  .stage .st-name{font-size:.82rem;font-weight:600;margin:3px 0 8px;letter-spacing:-.01em}
+  .stage .st-val{font-family:var(--mono);font-size:1.18rem;font-weight:700;color:var(--ink);line-height:1.1}
+  .stage .st-unit{font-family:var(--mono);font-size:.64rem;color:var(--muted);display:block;margin-top:3px;letter-spacing:.04em}
+  .stage.fail{border-color:var(--coral);opacity:1}
+  .stage.fail .st-no,.stage.fail .st-val{color:var(--coral)}
+  .pipe-foot{margin-top:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:.82rem;color:var(--muted)}
+  .store-chip{font-family:var(--mono);font-size:.76rem;border:1px dashed var(--line-strong);border-radius:9px;padding:7px 11px;color:var(--cyan)}
+  .store-chip b{color:var(--teal)}
+
+  /* Banners */
+  .banner{display:none;border-radius:11px;padding:12px 15px;font-size:.86rem;margin-bottom:18px;border:1px solid}
+  .banner.show{display:block}
+  .banner.err{background:rgba(255,107,107,.08);border-color:rgba(255,107,107,.35);color:#FFB4B4}
+  .banner.info{background:rgba(125,211,252,.07);border-color:var(--line-strong);color:var(--cyan)}
+  .banner code{font-family:var(--mono);font-size:.82em}
+
+  footer{margin-top:30px;color:var(--muted);font-size:.74rem;text-align:center;font-family:var(--mono);letter-spacing:.02em}
+  footer a{color:var(--teal);text-decoration:none}
+  .spin{display:inline-block;width:13px;height:13px;border:2px solid rgba(4,19,15,.35);border-top-color:#04130F;
+    border-radius:50%;animation:sp .6s linear infinite;vertical-align:-2px;margin-right:7px}
+  .btn-ghost .spin{border-color:rgba(125,211,252,.3);border-top-color:var(--cyan)}
+  @keyframes sp{to{transform:rotate(360deg)}}
+
+  @media (max-width:560px){
+    .stage + .stage{margin-left:0;margin-top:22px}
+    .stage::before{left:50%;top:-22px;width:2px;height:22px;transform:translateX(-50%)}
+    .row{grid-template-columns:auto 1fr auto}
+    .row .rmap{display:none}
+  }
+  @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="brand">
+      <div class="glyph" aria-hidden="true"></div>
+      <div>
+        <h1>Replay Decoder <span class="dim">· Bonkverse</span></h1>
+        <p class="sub">Paste an encoded <code>replaydata</code> string to unwrap it into the raw replay object — or pull the latest replays from bonk.io and decode one.</p>
+      </div>
+    </div>
+    <div class="pill">PSON <b>·</b> LZString <b>·</b> base64</div>
+  </header>
+
+  <!-- Input -->
+  <section class="panel">
+    <p class="eyebrow">Encoded replaydata</p>
+    <textarea id="input" spellcheck="false"
+      placeholder="Paste a replaydata string from the bonk.io replay API here…"></textarea>
+    <div class="controls">
+      <button class="btn-primary" id="decodeBtn">Decode</button>
+      <button class="btn-ghost" id="clearBtn">Clear</button>
+      <div class="spacer"></div>
+      <button class="btn-ghost" id="latestBtn">Fetch latest from bonk.io</button>
+      <button class="btn-ghost btn-small" id="byIdToggle" aria-expanded="false">by ID</button>
+    </div>
+    <div class="byid" id="byIdRow" hidden>
+      <label for="fromInput">Fetch 10 starting at ID</label>
+      <input id="fromInput" type="number" min="0" placeholder="e.g. 12096" />
+      <button class="btn-ghost btn-small" id="fetchBtn">Fetch</button>
+    </div>
+  </section>
+
+  <div class="banner" id="banner"></div>
+
+  <!-- Fetched rows -->
+  <section class="panel" id="fetchPanel">
+    <p class="eyebrow" id="fetchTitle">Latest from bonk.io</p>
+    <div class="rows" id="rows"></div>
+  </section>
+
+  <!-- Result -->
+  <section class="panel" id="resultPanel">
+    <div class="rhead" id="replayHead"></div>
+
+    <div class="players-head">
+      <p class="eyebrow">Players &amp; skins</p>
+      <button class="btn-ghost btn-tiny" id="dlAllAvatars">Download all avatars</button>
+    </div>
+    <div class="players-grid" id="players"></div>
+
+    <div class="json-head">
+      <p class="eyebrow">Full decoded replay</p>
+      <div class="mini">
+        <button class="btn-ghost btn-small" id="copyBtn">Copy JSON</button>
+        <button class="btn-ghost btn-small" id="dlBtn">Download</button>
+      </div>
+    </div>
+    <pre id="json"></pre>
+  </section>
+
+  <!-- Pipeline -->
+  <section class="panel" id="pipePanel">
+    <p class="eyebrow">Decode pipeline</p>
+    <div class="pipe" id="pipe">
+      <div class="stage" data-stage="input"><div class="st-no">01</div><div class="st-name">Encoded input</div><div class="st-val" data-val>—</div><span class="st-unit">chars</span></div>
+      <div class="stage" data-stage="flip"><div class="st-no">02</div><div class="st-name">Case-flip ×101</div><div class="st-val" data-val>—</div><span class="st-unit">chars</span></div>
+      <div class="stage" data-stage="lz"><div class="st-no">03</div><div class="st-name">LZString → b64</div><div class="st-val" data-val>—</div><span class="st-unit">chars</span></div>
+      <div class="stage" data-stage="pson"><div class="st-no">04</div><div class="st-name">base64 → PSON</div><div class="st-val" data-val>—</div><span class="st-unit">bytes</span></div>
+      <div class="stage" data-stage="object"><div class="st-no">05</div><div class="st-name">PSON → object</div><div class="st-val" data-val>—</div><span class="st-unit">top keys</span></div>
+    </div>
+    <div class="pipe-foot">
+      <span class="store-chip" id="storeChip" style="display:none"></span>
+      <span id="pipeNote">Run a decode to trace the bytes through each stage.</span>
+    </div>
+  </section>
+
+  <footer>decode runs server-side through the project's real <span style="color:var(--cyan)">codec.js</span> · same path the scraper uses</footer>
+</div>
+
+<!-- Client-side avatar renderer (ported skin engine). Sets window.renderBonkAvatar. -->
+<script src="/skin-shapes.js"></script>
+<script src="/skin-render.js"></script>
+
+<script>
+const $ = (s) => document.querySelector(s);
+let lastDecoded = null;
+let lastPlayers = [];
+let lastMeta = null;
+
+const MODES = { b:"Classic", ar:"Arrows", ard:"Death Arrows", sp:"Grapple", v:"VTOL", f:"Football" };
+
+function banner(kind, html){ const b=$("#banner"); b.className="banner show "+kind; b.innerHTML=html; }
+function clearBanner(){ $("#banner").className="banner"; }
+function escapeHtml(s){ return String(s).replace(/[&<>]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])); }
+function fmt(n){ return Number(n).toLocaleString("en-US"); }
+function hexColor(n){ if(n==null||isNaN(n)) return "#334"; return "#"+(n&0xffffff).toString(16).padStart(6,"0"); }
+function safeName(s){ return String(s||"player").replace(/[^a-z0-9_-]+/gi,"_").slice(0,40); }
+function download(name, text){
+  const blob=new Blob([text],{type:"application/json"});
+  const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=name; a.click(); URL.revokeObjectURL(a.href);
+}
+async function copyText(text, btn){
+  await navigator.clipboard.writeText(text);
+  if(btn){ const t=btn.textContent; btn.textContent="Copied"; setTimeout(()=>btn.textContent=t,1100); }
+}
+
+// ── Pipeline ──
+const STAGES=["input","flip","lz","pson","object"];
+function resetPipe(){
+  STAGES.forEach(s=>{const el=$(`.stage[data-stage="${s}"]`);el.classList.remove("on","fail");el.querySelector("[data-val]").textContent="—";});
+  $("#storeChip").style.display="none";
+  $("#pipeNote").textContent="Run a decode to trace the bytes through each stage.";
+}
+function fillPipe(stats, topKeyCount){
+  const vals={input:fmt(stats.encodedChars),flip:fmt(stats.encodedChars),lz:fmt(stats.base64Chars),pson:fmt(stats.psonBytes),object:fmt(topKeyCount)};
+  $("#pipeNote").textContent="Each stage unwraps one layer of the bonk.io encoding.";
+  STAGES.forEach((s,i)=>{const el=$(`.stage[data-stage="${s}"]`);setTimeout(()=>{el.classList.add("on");el.querySelector("[data-val]").textContent=vals[s];}, i*110);});
+  const chip=$("#storeChip"); chip.style.display="inline-block";
+  chip.innerHTML=`stored as gzip → <b>${fmt(stats.gzipBytes)} bytes</b> &nbsp;·&nbsp; ${stats.savingsPct}% smaller than the encoded string`;
+}
+function failPipe(stage){
+  const order={input:0,lz:2,base64:2,pson:3}; const failIdx=order[stage]??0;
+  STAGES.forEach((s,i)=>{const el=$(`.stage[data-stage="${s}"]`); if(i<failIdx)el.classList.add("on"); else if(i===failIdx)el.classList.add("fail");});
+  $("#pipeNote").textContent="Decode stopped — check the message above.";
+}
+
+// ── JSON highlight ──
+function highlight(json){
+  return json.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+    .replace(/"(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d+)?(?:[eE][+\-]?\d+)?/g,
+      (m)=>{let cls="j-num"; if(/^"/.test(m))cls=/:$/.test(m)?"j-key":"j-str"; else if(/true|false/.test(m))cls="j-bool"; else if(/null/.test(m))cls="j-null"; return `<span class="${cls}">${m}</span>`;});
+}
+
+// ── Result ──
+function renderHead(meta, ctx){
+  const title = meta.mapName ? escapeHtml(meta.mapName) : "Unknown map";
+  const by = meta.mapAuthor ? `<span class="by">by ${escapeHtml(meta.mapAuthor)}</span>` : "";
+  const chips = [];
+  if(ctx && ctx.id != null) chips.push(`<span class="mchip">replay <b>#${ctx.id}</b></span>`);
+  if(meta.mapId != null)    chips.push(`<span class="mchip">map <b>#${meta.mapId}</b></span>`);
+  if(meta.mode)             chips.push(`<span class="mchip mode">${escapeHtml(MODES[meta.mode]||meta.mode)}</span>`);
+  chips.push(`<span class="mchip">${lastPlayers.length} player${lastPlayers.length===1?"":"s"}</span>`);
+  if(meta.teams!=null)      chips.push(`<span class="mchip">${meta.teams?"Teams":"FFA"}</span>`);
+  if(meta.winLimit!=null)   chips.push(`<span class="mchip">win limit <b>${meta.winLimit}</b></span>`);
+  if(Array.isArray(meta.scores)) chips.push(`<span class="mchip">scores <b>${meta.scores.join("–")}</b></span>`);
+  if(meta.seed!=null)       chips.push(`<span class="mchip">seed ${meta.seed}</span>`);
+  if(meta.frames!=null)     chips.push(`<span class="mchip">${fmt(meta.frames)} frames</span>`);
+  $("#replayHead").innerHTML = `<div class="map-title">${title} ${by}</div><div class="meta-chips">${chips.join("")}</div>`;
+}
+
+function renderPlayers(players){
+  if(!players.length){ $("#players").innerHTML = `<div class="pcard"><div class="pmeta">No playerArray in this replay.</div></div>`; return; }
+  $("#players").innerHTML = players.map((p,i)=>{
+    const meta = [
+      `<span class="lv">lv ${p.level}</span>`,
+      p.score!=null ? `<span class="sc">score ${p.score}</span>` : "",
+      p.ping!=null  ? `<span>ping ${p.ping}</span>` : "",
+      p.guest       ? `<span>guest</span>` : "",
+    ].filter(Boolean).join("");
+    const hasAvatar = p.avatar && Array.isArray(p.avatar.layers);
+    const avatarCell = hasAvatar
+      ? `<canvas class="pskin" data-skin="${i}" title="${escapeHtml(p.username)}'s skin"></canvas>`
+      : `<div class="pskin-empty">no skin</div>`;
+    const acts = hasAvatar
+      ? `<button class="btn-ghost btn-tiny grow" data-copy-av="${i}">Copy avatar</button>
+         <button class="btn-ghost btn-tiny" data-dl-av="${i}" title="Download avatar JSON">⤓</button>`
+      : `<span class="pmeta">no avatar</span>`;
+    return `<div class="pcard">
+      <div class="pcard-top">
+        ${avatarCell}
+        <div class="pcard-info">
+          <div class="pname"><span class="uname">${escapeHtml(p.username)}</span></div>
+          <div class="pmeta">${meta}</div>
+        </div>
+      </div>
+      <div class="pacts">${acts}</div>
+    </div>`;
+  }).join("");
+
+  $("#players").querySelectorAll("[data-copy-av]").forEach(b=>{
+    b.addEventListener("click",()=>copyText(JSON.stringify(lastPlayers[+b.dataset.copyAv].avatar,null,2), b));
+  });
+  $("#players").querySelectorAll("[data-dl-av]").forEach(b=>{
+    b.addEventListener("click",()=>{ const p=lastPlayers[+b.dataset.dlAv]; download(safeName(p.username)+"-avatar.json", JSON.stringify(p.avatar,null,2)); });
+  });
+
+  // Render each avatar onto its canvas (crisp on hi-dpi by rendering at DPR scale).
+  if(typeof window.renderBonkAvatar === "function"){
+    const dpr = Math.min(window.devicePixelRatio || 1, 3);
+    const px  = Math.round(60 * dpr);
+    $("#players").querySelectorAll("canvas[data-skin]").forEach(cv=>{
+      const p = players[+cv.dataset.skin];
+      if(!p || !p.avatar) return;
+      cv.style.width = "60px"; cv.style.height = "60px";
+      window.renderBonkAvatar(cv, p.avatar, px).catch(err=>{
+        console.warn("avatar render failed for", p.username, err);
+        const ph = document.createElement("div");
+        ph.className = "pskin-empty"; ph.textContent = "render error";
+        cv.replaceWith(ph);
+      });
+    });
+  }
+}
+
+function renderResult(data, ctx){
+  lastDecoded=data.decoded; lastPlayers=data.players||[]; lastMeta=data.meta||{};
+  renderHead(lastMeta, ctx);
+  renderPlayers(lastPlayers);
+  const pretty=JSON.stringify(data.decoded,null,2);
+  $("#json").innerHTML = pretty.length>600000 ? escapeHtml(pretty) : highlight(pretty);
+  $("#resultPanel").style.display="block";
+  $("#resultPanel").scrollIntoView({behavior:"smooth",block:"nearest"});
+}
+
+// ── Decode ──
+async function decode(ctx){
+  const raw=$("#input").value.trim(); clearBanner();
+  if(!raw){ banner("err","Paste an encoded <code>replaydata</code> string first."); return; }
+  const btn=$("#decodeBtn"); btn.disabled=true; btn.innerHTML=`<span class="spin"></span>Decoding`; resetPipe();
+  try{
+    const res=await fetch("/api/decode",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({replaydata:raw})});
+    const data=await res.json();
+    if(!data.ok){ banner("err",escapeHtml(data.error||"Decode failed.")); failPipe(data.stage||"input"); $("#resultPanel").style.display="none"; return; }
+    renderResult(data, ctx);
+    fillPipe(data.stats,(data.topKeys||[]).length);
+  }catch(err){ banner("err","Couldn't reach the decoder: "+escapeHtml(err.message)); }
+  finally{ btn.disabled=false; btn.textContent="Decode"; }
+}
+
+// ── Fetch latest ──
+async function fetchLatest(){
+  clearBanner();
+  const btn=$("#latestBtn"); btn.disabled=true; const label=btn.textContent; btn.innerHTML=`<span class="spin"></span>Finding latest`;
+  try{
+    const res=await fetch("/api/latest"); const data=await res.json();
+    if(!data.ok){ banner("err",escapeHtml(data.error||"Fetch failed.")); return; }
+    if(data.count===0){ banner("info",escapeHtml(data.note||"No replays returned.")); $("#fetchPanel").style.display="none"; return; }
+    $("#fetchTitle").textContent=`Latest from bonk.io — newest id #${data.maxId}`;
+    banner("info",`Pulled the <b>newest ${data.count}</b> replays (up to id <code>#${data.maxId}</code>). Pick one to decode it.`);
+    renderRows(data.replays);
+  }catch(err){ banner("err","Couldn't reach the fetcher: "+escapeHtml(err.message)); }
+  finally{ btn.disabled=false; btn.textContent=label; }
+}
+
+// ── Fetch by id ──
+async function fetchById(){
+  clearBanner();
+  const from=parseInt($("#fromInput").value||"0",10);
+  if(!Number.isFinite(from)||from<0){ banner("err","Enter a valid replay ID."); return; }
+  const btn=$("#fetchBtn"); btn.disabled=true; btn.innerHTML=`<span class="spin"></span>Fetching`;
+  try{
+    const res=await fetch(`/api/fetch?startingFrom=${from}`); const data=await res.json();
+    if(!data.ok){ banner("err",escapeHtml(data.error||"Fetch failed.")); return; }
+    if(data.count===0){ banner("info",escapeHtml(data.note||"No replays returned.")); $("#fetchPanel").style.display="none"; return; }
+    $("#fetchTitle").textContent=`From bonk.io — starting at id #${data.startingFrom}`;
+    banner("info",`Pulled <b>${data.count}</b> replays starting at id <code>#${data.startingFrom}</code>. Pick one to decode it.`);
+    renderRows(data.replays);
+  }catch(err){ banner("err","Couldn't reach the fetcher: "+escapeHtml(err.message)); }
+  finally{ btn.disabled=false; btn.textContent="Fetch"; }
+}
+
+function renderRows(replays){
+  $("#rows").innerHTML=replays.map((r,i)=>`
+    <button class="row" data-i="${i}">
+      <span class="rid">#${r.id}</span>
+      <span class="rmap">map ${r.mapid ?? "—"}</span>
+      <span class="rprev">${escapeHtml(r.replaydata.slice(0,80))}…</span>
+      <span class="rgo">decode →</span>
+    </button>`).join("");
+  $("#fetchPanel").style.display="block";
+  document.querySelectorAll(".row").forEach((row,i)=>{
+    row.addEventListener("click",()=>{
+      const r=replays[i];
+      $("#input").value=r.replaydata;
+      decode({ id:r.id, mapid:r.mapid });
+    });
+  });
+}
+
+// ── Wire up ──
+$("#decodeBtn").addEventListener("click",()=>decode(null));
+$("#latestBtn").addEventListener("click",fetchLatest);
+$("#fetchBtn").addEventListener("click",fetchById);
+$("#byIdToggle").addEventListener("click",()=>{
+  const row=$("#byIdRow"); const open=row.hasAttribute("hidden");
+  if(open){ row.removeAttribute("hidden"); $("#byIdToggle").setAttribute("aria-expanded","true"); $("#fromInput").focus(); }
+  else{ row.setAttribute("hidden",""); $("#byIdToggle").setAttribute("aria-expanded","false"); }
+});
+$("#fromInput").addEventListener("keydown",(e)=>{ if(e.key==="Enter") fetchById(); });
+$("#clearBtn").addEventListener("click",()=>{
+  $("#input").value=""; clearBanner(); resetPipe();
+  $("#resultPanel").style.display="none"; $("#fetchPanel").style.display="none"; $("#input").focus();
+});
+$("#copyBtn").addEventListener("click",(e)=>{ if(lastDecoded!=null) copyText(JSON.stringify(lastDecoded,null,2), e.currentTarget); });
+$("#dlBtn").addEventListener("click",()=>{ if(lastDecoded!=null) download("replay.json", JSON.stringify(lastDecoded,null,2)); });
+$("#dlAllAvatars").addEventListener("click",()=>{
+  if(!lastPlayers.length) return;
+  const all=lastPlayers.map(p=>({username:p.username, avatar:p.avatar}));
+  download("avatars.json", JSON.stringify(all,null,2));
+});
+$("#input").addEventListener("keydown",(e)=>{ if((e.metaKey||e.ctrlKey)&&e.key==="Enter") decode(null); });
+</script>
+</body>
+</html>
