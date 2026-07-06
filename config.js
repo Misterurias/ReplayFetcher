@@ -34,7 +34,7 @@ export const config = {
     delays: {
         between:        3_600,           // ~1 req / 3.6 s  →  ~1 000 req/hr  (limit: 10 000)
         rateLimit:      65 * 60_000,     // wait after a rate-limit response
-        caughtUp:        1 * 60_000,     // poll interval when fully caught up
+        caughtUp:        2 * 60_000,     // poll interval when fully caught up
         initialBackoff: 30_000,          // first retry delay on network error
         maxBackoff:     30 * 60_000,     // cap for exponential back-off
     },
