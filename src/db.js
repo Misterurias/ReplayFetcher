@@ -32,11 +32,28 @@ pool.on("error", (err) => {
  * replay_players FK → (cycle, replay_id)
  *   Matches the composite PK on replays.
  *
+ * maps PK = (mapid, version)
+ *   A map's geometry can be edited by its author after publishing — bonk.io's
+ *   own `dbv` field (found in every replay's startingState.mm) tells us which
+ *   version any given replay was actually played on. Keying on (mapid, version)
+ *   and never overwriting an existing row means we capture map history
+ *   correctly for free, instead of clobbering older geometry with "latest
+ *   wins" semantics.
+ *
  * scraper_state
  *   Single row (id = 1). Stores both position and cycle so restarts and
  *   redeploys always resume exactly where they left off.
  */
 export async function migrate() {
+
+    // Separate + non-fatal: some managed Postgres users lack CREATE EXTENSION
+    // privileges. If it fails, we just skip the trigram index below.
+    try {
+        await pool.query(`CREATE EXTENSION IF NOT EXISTS pg_trgm;`);
+    } catch (err) {
+        console.warn("[DB] Could not create pg_trgm extension (non-fatal):", err.message);
+    }
+
     await pool.query(`
         CREATE TABLE IF NOT EXISTS scraper_state (
             id       INT     PRIMARY KEY DEFAULT 1,
@@ -77,7 +94,38 @@ export async function migrate() {
 
         CREATE INDEX IF NOT EXISTS idx_replay_players_cycle
             ON replay_players (cycle);
+
+        -- Versioned map archive. See migrate() doc comment above for why
+        -- (mapid, version) is the PK.
+        CREATE TABLE IF NOT EXISTS maps (
+            mapid       BIGINT      NOT NULL,
+            version     INT         NOT NULL,
+            name        TEXT,
+            author      TEXT,
+            author_id   BIGINT,
+            published   BOOLEAN,
+            votes_up    INT,
+            votes_down  INT,
+            remix_of    BIGINT,
+            mapdata     BYTEA,
+            updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            PRIMARY KEY (mapid, version)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_maps_mapid_version
+            ON maps (mapid, version DESC);
     `);
+
+    // Separate call: only works if pg_trgm actually installed above.
+    try {
+        await pool.query(`
+            CREATE INDEX IF NOT EXISTS idx_maps_name_trgm
+                ON maps USING gin (name gin_trgm_ops);
+        `);
+    } catch (err) {
+        console.warn("[DB] Could not create trigram index on maps.name (non-fatal):", err.message);
+    }
+
     console.log("[DB] Schema up-to-date.");
 }
 
@@ -132,16 +180,29 @@ export async function beginNewCycle(currentCycle) {
 // ─── Replays ─────────────────────────────────────────────────────────────────
 
 /**
- * Bulk-inserts a batch of replays and upserts related players in one
- * transaction. If the transaction fails the entire batch is rolled back —
- * the scraper retries from the same position on the next iteration.
+ * Bulk-inserts a batch of replays and upserts related players and map
+ * metadata in one transaction. If the transaction fails the entire batch is
+ * rolled back — the scraper retries from the same position on the next
+ * iteration.
  *
  * @param {number} cycle  The current cycle number.
  * @param {Array<{
  *   id: number,
  *   mapid: number|null,
  *   replayBytes: Buffer,
- *   players: Array<{username, level, avatar}>
+ *   players: Array<{username, level, avatar}>,
+ *   map: {
+ *     mapid: number,
+ *     version: number,
+ *     name: string|null,
+ *     author: string|null,
+ *     authorId: number|null,
+ *     published: boolean|null,
+ *     votesUp: number|null,
+ *     votesDown: number|null,
+ *     remixOf: number|null,
+ *     mapBytes: Buffer|null,
+ *   } | null
  * }>} docs
  */
 export async function insertBatch(cycle, docs) {
@@ -159,6 +220,31 @@ export async function insertBatch(cycle, docs) {
                  RETURNING id`,
                 [cycle, doc.id, doc.mapid ?? null, doc.replayBytes]
             );
+
+            // Versioned map upsert — DO NOTHING on conflict since a captured
+            // (mapid, version) pair is immutable (see migrate() doc comment).
+            if (doc.map?.mapid != null && doc.map?.version != null) {
+                const m = doc.map;
+                await client.query(
+                    `INSERT INTO maps
+                        (mapid, version, name, author, author_id, published,
+                         votes_up, votes_down, remix_of, mapdata, updated_at)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+                     ON CONFLICT (mapid, version) DO NOTHING`,
+                    [
+                        m.mapid,
+                        m.version,
+                        m.name ?? null,
+                        m.author ?? null,
+                        m.authorId ?? null,
+                        m.published ?? null,
+                        m.votesUp ?? null,
+                        m.votesDown ?? null,
+                        m.remixOf ?? null,
+                        m.mapBytes ?? null,
+                    ]
+                );
+            }
 
             for (const p of doc.players) {
                 if (!p.username) continue;

@@ -2,7 +2,7 @@ import { config }                                    from "../config.js";
 import { migrate, getState, saveState, beginNewCycle,
          insertBatch, closeDb }                      from "./db.js";
 import { fetchReplays }                              from "./api.js";
-import { encodeForStorage }                          from "./codec.js";
+import { encodeForStorage, compressJsonForStorage } from "./codec.js";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -155,11 +155,36 @@ export class Scraper {
                             }))
                             .filter((p) => p.username);
 
+                        // NEW — pull map metadata + geometry, matching output.json's confirmed shape
+                        const ss = decoded?.startingState ?? {};
+                        const mm = ss.mm ?? {};
+
+                        let map = null;
+                        if (mm.dbid != null && mm.dbv != null) {
+                            const mapBytes = await compressJsonForStorage({
+                                physics:  ss.physics ?? null,
+                                capZones: ss.capZones ?? null,
+                            });
+                            map = {
+                                mapid:     mm.dbid,
+                                version:   mm.dbv,
+                                name:      mm.n ?? decoded.mn ?? null,
+                                author:    mm.a ?? decoded.ma ?? null,
+                                authorId:  mm.authid ?? null,
+                                published: mm.pub ?? null,
+                                votesUp:   mm.vu ?? null,
+                                votesDown: mm.vd ?? null,
+                                remixOf:   mm.rxid > 0 ? mm.rxid : null,
+                                mapBytes,
+                            };
+                        }
+
                         docs.push({
-                            id:          r.id,
-                            mapid:       r.mapid ?? null,
+                            id: r.id,
+                            mapid: r.mapid ?? null,
                             replayBytes,
                             players,
+                            map,   // NEW
                         });
                     } catch (e) {
                         failedIds.push(r.id);

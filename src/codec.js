@@ -82,6 +82,17 @@ export async function decompressFromStorage(blob) {
     return gunzip(blob);
 }
 
+/** Gzip a plain JS object (JSON-stringified) → Buffer for BYTEA storage. */
+export async function compressJsonForStorage(obj) {
+    return gzip(Buffer.from(JSON.stringify(obj)));
+}
+
+/** Inverse of compressJsonForStorage. */
+export async function decompressJsonFromStorage(blob) {
+    const buf = await gunzip(blob);
+    return JSON.parse(buf.toString());
+}
+
 /**
  * Full round-trip: encoded API string → gzip Buffer for DB storage.
  * Returns { replayBytes, decoded } or throws on decode failure.
