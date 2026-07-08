@@ -8,6 +8,11 @@ import { encodeForStorage, compressJsonForStorage } from "./codec.js";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// Generous relative to bonk.io's real client-side username limit (well under
+// 24 chars) — only needs to stay safely below Postgres's btree index row-size
+// ceiling (~2704 bytes on an 8KB page). See the players extraction below.
+const MAX_USERNAME_LENGTH = 100;
+
 function clamp(val, min, max) {
     return Math.min(Math.max(val, min), max);
 }
@@ -149,18 +154,42 @@ export class Scraper {
                         const players = (decoded.playerArray ?? [])
                             .filter(Boolean)
                             .map((p) => ({
-                                username: p.userName ?? null,
-                                level:    p.level    ?? 0,
+                                username: typeof p.userName === "string" ? p.userName : null,
+                                // Number.isFinite (not `??`) so a malformed/NaN
+                                // level never reaches the DB — `?? 0` alone
+                                // doesn't catch NaN, and an unguarded NaN here
+                                // throws a Postgres integer error that the
+                                // scraper's retry loop can't get past, stalling
+                                // it on the same batch indefinitely instead of
+                                // skipping the one bad replay.
+                                level: Number.isFinite(p.level) ? p.level : 0,
                                 avatar:   p.avatar   ?? null,
                             }))
-                            .filter((p) => p.username);
+                            .filter((p) => {
+                                if (!p.username) return false;
+                                // Same stall-forever risk as the level guard
+                                // above, different failure mode: a corrupted
+                                // decode can produce a "username" thousands of
+                                // characters long without decodeReplayData ever
+                                // throwing, which exceeds Postgres's btree
+                                // index row-size limit on players_pkey and
+                                // crashes the whole batch's insert.
+                                if (p.username.length > MAX_USERNAME_LENGTH) {
+                                    console.warn(
+                                        `[Scraper] Dropping player with implausible username length ` +
+                                            `(${p.username.length} chars) on replay ${r.id}`
+                                    );
+                                    return false;
+                                }
+                                return true;
+                            });
 
-                        // NEW — pull map metadata + geometry, matching output.json's confirmed shape
+                        // Pull map metadata + geometry, matching output.json's confirmed shape
                         const ss = decoded?.startingState ?? {};
                         const mm = ss.mm ?? {};
 
                         let map = null;
-                        if (mm.dbid != null && mm.dbv != null) {
+                        if (Number.isFinite(mm.dbid) && Number.isFinite(mm.dbv)) {
                             const mapBytes = await compressJsonForStorage({
                                 physics:  ss.physics ?? null,
                                 capZones: ss.capZones ?? null,
@@ -170,11 +199,11 @@ export class Scraper {
                                 version:   mm.dbv,
                                 name:      mm.n ?? decoded.mn ?? null,
                                 author:    mm.a ?? decoded.ma ?? null,
-                                authorId:  mm.authid ?? null,
-                                published: mm.pub ?? null,
-                                votesUp:   mm.vu ?? null,
-                                votesDown: mm.vd ?? null,
-                                remixOf:   mm.rxid > 0 ? mm.rxid : null,
+                                authorId:  Number.isFinite(mm.authid) ? mm.authid : null,
+                                published: typeof mm.pub === "boolean" ? mm.pub : null,
+                                votesUp:   Number.isFinite(mm.vu) ? mm.vu : null,
+                                votesDown: Number.isFinite(mm.vd) ? mm.vd : null,
+                                remixOf:   Number.isFinite(mm.rxid) && mm.rxid > 0 ? mm.rxid : null,
                                 mapBytes,
                             };
                         }
@@ -184,7 +213,7 @@ export class Scraper {
                             mapid: r.mapid ?? null,
                             replayBytes,
                             players,
-                            map,   // NEW
+                            map,
                         });
                     } catch (e) {
                         failedIds.push(r.id);
